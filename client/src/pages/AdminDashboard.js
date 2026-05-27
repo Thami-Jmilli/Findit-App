@@ -3,7 +3,7 @@ import axios from "axios";
 import Navbar from "../components/Navbar";
 import ItemCard from "../components/ItemCard";
 import config from "../components/config";
-import { Spinner, EmptyState, StatusBadge, TypeBadge, formatDate } from "../utils/helpers";
+import { Spinner, EmptyState, formatDate } from "../utils/helpers";
 
 function StatCard({ icon, label, value, bg }) {
   return (

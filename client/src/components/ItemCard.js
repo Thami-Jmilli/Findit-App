@@ -5,7 +5,7 @@ import config from "./config";
 import { StatusBadge, TypeBadge, formatDate, Spinner } from "../utils/helpers";
 
 export default function ItemCard({ item, onDelete, onStatusChange, isAdmin }) {
-  const [expanded, setExpanded] = useState(false);
+
   const [claimForm, setClaimForm] = useState({ name:"", mobile:"", hostel:"", proof:"" });
   const [helperForm, setHelperForm] = useState({ name:"", mobile:"", hostel:"" });
   const [showModal, setShowModal] = useState(false);
