@@ -1,5 +1,5 @@
-const bcrypt   = require("bcryptjs");
-const jwt      = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const supabase = require("../config/supabase");
 
 // ── SIGNUP ────────────────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ const signup = async (req, res) => {
   try {
     const { username, rollno, email, password } = req.body;
 
-    // Check if email or rollno already exists
+    // Check existing user
     const { data: existing } = await supabase
       .from("users")
       .select("id")
@@ -15,26 +15,67 @@ const signup = async (req, res) => {
       .maybeSingle();
 
     if (existing) {
-      return res.status(409).json({ success: false, message: "Email or Roll No already registered" });
+      return res.status(409).json({
+        success: false,
+        message: "Email or Roll No already registered",
+      });
     }
 
+    // Hash password
     const hashedPassword = bcrypt.hashSync(password, 10);
 
+    // Insert user
     const { data: user, error } = await supabase
       .from("users")
-      .insert({ username, rollno, email, password: hashedPassword, role: "user" })
+      .insert({
+        username,
+        rollno,
+        email,
+        password: hashedPassword,
+        role: "user",
+      })
       .select("id, username, email, role")
       .single();
 
     if (error) throw error;
 
+    // Create token immediately after signup
+    const expirationTime = Date.now() + 1000 * 60 * 60 * 24 * 30;
+
+    const token = jwt.sign(
+      {
+        sub: user.id,
+        role: user.role,
+        expirationTime,
+      },
+      process.env.JWT_SECRET
+    );
+
+    // Cookie for Render + Vercel
+    res.cookie("Authorization", token, {
+      expires: new Date(expirationTime),
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
+
     res.status(201).json({
       success: true,
-      user: { _id: user.id, username: user.username, email: user.email, role: user.role },
+      token,
+      user: {
+        _id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error("Signup error:", error.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 };
 
@@ -50,45 +91,75 @@ const login = async (req, res) => {
       .single();
 
     if (error || !user) {
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
     }
 
-    const passwordMatch = bcrypt.compareSync(password, user.password);
+    const passwordMatch = bcrypt.compareSync(
+      password,
+      user.password
+    );
+
     if (!passwordMatch) {
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
     }
 
     const expirationTime = Date.now() + 1000 * 60 * 60 * 24 * 30;
+
     const token = jwt.sign(
-      { sub: user.id, role: user.role, expirationTime },
-      process.env.SECRETKEY
+      {
+        sub: user.id,
+        role: user.role,
+        expirationTime,
+      },
+      process.env.JWT_SECRET
     );
 
+    // Important for Vercel + Render auth
     res.cookie("Authorization", token, {
       expires: new Date(expirationTime),
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
+      sameSite: "none",
     });
 
     res.json({
       success: true,
       token,
-      user: { _id: user.id, username: user.username, email: user.email, role: user.role },
+      user: {
+        _id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error("Login error:", error.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 };
 
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
 const logout = (req, res) => {
-  res.clearCookie("Authorization");
+  res.clearCookie("Authorization", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+  });
+
   res.json({ success: true });
 };
 
-// ── FETCH SINGLE USER ─────────────────────────────────────────────────────────
+// ── FETCH USER ────────────────────────────────────────────────────────────────
 const fetchUser = async (req, res) => {
   try {
     const { data: user, error } = await supabase
@@ -98,16 +169,25 @@ const fetchUser = async (req, res) => {
       .single();
 
     if (error || !user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    res.json({ success: true, user });
+    res.json({
+      success: true,
+      user,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 };
 
-// ── FETCH ALL USERS (admin) ───────────────────────────────────────────────────
+// ── FETCH ALL USERS ───────────────────────────────────────────────────────────
 const fetchAllUsers = async (req, res) => {
   try {
     const { data: users, error } = await supabase
@@ -117,19 +197,38 @@ const fetchAllUsers = async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ success: true, users });
+    res.json({
+      success: true,
+      users,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 };
 
 // ── CHECK AUTH ────────────────────────────────────────────────────────────────
 const checkAuth = (req, res) => {
   const u = req.user;
+
   res.json({
     success: true,
-    user: { _id: u.id, username: u.username, email: u.email, role: u.role },
+    user: {
+      _id: u.id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+    },
   });
 };
 
-module.exports = { signup, login, logout, fetchUser, fetchAllUsers, checkAuth };
+module.exports = {
+  signup,
+  login,
+  logout,
+  fetchUser,
+  fetchAllUsers,
+  checkAuth,
+};
